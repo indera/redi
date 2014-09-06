@@ -177,6 +177,7 @@ def _remove(path):
 
 
 def _fetch_run_data(data_folder):
+    # TODO: Try to get closer to the principle: "Functions should serve single purpose"
     person_form_event_tree_with_data = _person_form_events_service.fetch()
     alert_summary = _load(os.path.join(data_folder, 'alert_summary.obj'))
     rule_errors = _load(os.path.join(data_folder, 'rule_errors.obj'))
@@ -191,8 +192,8 @@ def _load(path):
         return pickle.load(fp)
 
 
-def _store_run_data(data_folder, alert_summary,\
- person_form_event_tree_with_data, rule_errors, collection_date_summary_dict):
+def _store_run_data(data_folder, alert_summary,
+        person_form_event_tree_with_data, rule_errors, collection_date_summary_dict):
     _person_form_events_service.store(person_form_event_tree_with_data)
     _save(alert_summary, os.path.join(data_folder, 'alert_summary.obj'))
     _save(rule_errors, os.path.join(data_folder, 'rule_errors.obj'))
@@ -248,17 +249,18 @@ def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
         'project': settings.project,
         'redcap_server': settings.redcap_server}
 
-    report_xsl = proj_root + "bin/utils/report.xsl"
-    send_email = settings.send_email
-
     if not resume:
         _delete_last_runs_data(data_folder)
 
-        alert_summary, person_form_event_tree_with_data, rule_errors, \
+        #TODO: not easy to read
+        alert_summary, \
+        person_form_event_tree_with_data, \
+        rule_errors, \
         collection_date_summary_dict = _create_person_form_event_tree_with_data(
-            config_file, configuration_directory, email_settings,\
-             form_events_file, raw_xml_file, redcap_settings, rules,\
-              settings, data_folder, translation_table_file, dry_run)
+                config_file, configuration_directory, email_settings,
+                form_events_file, raw_xml_file, redcap_settings, rules,
+                settings, data_folder, translation_table_file, dry_run
+        )
 
         _store_run_data(data_folder, alert_summary,
                         person_form_event_tree_with_data, rule_errors,
@@ -271,16 +273,25 @@ def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
     # redi.py is not executing in dry run state.
     if not dry_run:
         unsent_events = person_form_event_tree_with_data.xpath("//event/status[.='unsent']")
-        # Use the new method to communicate with RedCAP
-        report_data = redi_lib.generate_output(
-            person_form_event_tree_with_data, redcap_settings, email_settings,
+        #report_data = redi_lib.generate_output(
+        #    person_form_event_tree_with_data, redcap_settings, email_settings,
+        #    _person_form_events_service)
+
+        # Send data to REDCap using PyCap
+        report_data = redi_lib.transfer_pfe_tree(
+            person_form_event_tree_with_data,
+            redcap_settings,
+            email_settings,
             _person_form_events_service)
+
         # write person_form_event_tree to file
-        write_element_tree_to_file(person_form_event_tree_with_data,\
-         os.path.join(data_folder, 'person_form_event_tree_with_data.xml'))
+        write_element_tree_to_file(
+            person_form_event_tree_with_data,
+            os.path.join(data_folder, 'person_form_event_tree_with_data.xml'))
         sent_events = person_form_event_tree_with_data.xpath("//event/status[.='sent']")
         if len(unsent_events) != len(sent_events):
-            logger.warning('Some of the events are not sent to the redcap. Please check event statuses in '+data_folder+'person_form_event_tree_with_data.xml')
+            logger.warning('Some of the events are not sent to the redcap. ' \
+                'Please check event statuses in '+data_folder+'person_form_event_tree_with_data.xml')
 
         # Add any errors from running the rules to the report
         map(logger.warning, rule_errors)
@@ -289,30 +300,11 @@ def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
             report_data['errors'].extend(rule_errors)
 
         # create summary report
-        xml_report_tree = create_summary_report(report_parameters,
-                                            report_data, alert_summary,
-                                            collection_date_summary_dict)
-        # print ElementTree.tostring(xml_report_tree)
-
-        xslt = etree.parse(report_xsl)
-        transform = etree.XSLT(xslt)
-        html_report = transform(xml_report_tree)
-        html_str = etree.tostring(html_report, method='html', pretty_print=True)
-
-        # send report via email
-        if settings.send_email:
-            sender = settings.sender_email
-            receiver = settings.receiver_email.split()
-            send_report(sender, receiver, html_str)
-        else:
-            logger.info("Email will not be sent as 'send_email' parameter"\
-            " in {0} is set to 'N'".format(config_file))
-            try:
-                report_file = open(settings.report_file_path2, 'w')
-            except IOError:
-                logger.exception('could not open file %s' % settings.report_file_path2)
-                raise
-            report_file.write(html_str)
+        xml_report_tree = create_summary_report(
+            report_parameters,
+            report_data, alert_summary,
+            collection_date_summary_dict)
+        save_or_send_report(settings, xml_report_tree)
 
     if batch:
         # Update the batch row
@@ -327,6 +319,28 @@ def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
     if not do_keep_gen_files:
         redi_lib.delete_temporary_folder(data_folder)
 
+def save_or_send_report(settings, xml_report_tree):
+    # print etree.tostring(xml_report_tree)
+    report_xsl = proj_root + "bin/utils/report.xsl"
+    xslt = etree.parse(report_xsl)
+    transform = etree.XSLT(xslt)
+    html_report = transform(xml_report_tree)
+    html_str = etree.tostring(html_report, method='html', pretty_print=True)
+
+    # send report via email
+    if settings.send_email:
+        sender = settings.sender_email
+        receiver = settings.receiver_email.split()
+        send_report(sender, receiver, html_str)
+    else:
+        logger.info("Report email will not be sent because 'send_email' "
+                    "parameter is set to 'N' in the config file")
+        try:
+            report_file = open(settings.report_file_path2, 'w')
+        except IOError:
+            logger.exception('could not open file %s' % settings.report_file_path2)
+            raise
+        report_file.write(html_str)
 
 def _create_person_form_event_tree_with_data(config_file, \
     configuration_directory, email_settings, form_events_file, raw_xml_file,\
@@ -793,7 +807,7 @@ def update_formdatefield(data, form_events_tree):
     # final element tree's root
     data_root = data.getroot()
 
-    # iterate thru each subject
+    # iterate through each subject
     for subject in data_root.iter('subject'):
         # get the value of formDateField for a given formName from
         # [redcapFormName, formDateField] dictionary
