@@ -27,6 +27,7 @@ from requests import RequestException
 from lxml import etree
 import logging
 import sys
+import collections
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 proj_root = redi.get_proj_root()
@@ -692,3 +693,199 @@ Helper function for debugging xml content
 def printxml(tree):
     print etree.tostring(tree, pretty_print = True)
     return
+
+def get_redcap_client(redcap_settings, email_settings):
+    """
+    Helper method used to check availability of REDCap
+    Warning: will send a warning email and interrupt execution
+        if communication with REDCap fails
+    """
+    try:
+        client = redcapClient(
+            redcap_settings['redcap_uri'],
+            redcap_settings['token'],
+            redcap_settings['verify_ssl'])
+    except RequestException:
+        redi_email.send_email_redcap_connection_error(email_settings)
+        raise
+    return client
+
+def transfer_pfe_tree(
+        pfe_tree,
+        redcap_settings,
+        email_settings,
+        pfe_repository):
+    """
+    The main method which transfers Person Form Event xml to REDCap
+    using #send_person_form_data_to_redcap() function.
+
+    Returns a summary of the transfer success:
+        'total_subjects'        : 3,
+        'form_details'          : { Total_abc_Forms : 123, ...},
+        'subject_details'       : { study_id : { Total_abc_Forms : 123, ... },  ... }
+        'errors'                : []
+        'subject_details_events : {study_id : event_count, ...}
+
+    Note: `total_subjects` is incremented even if the forms for the subject
+        are empty or there was an error while sending the data to REDCap.
+    """
+    client = get_redcap_client(redcap_settings, email_settings)
+    summary = init_summary()
+    summary['total_subjects'] = 0
+
+    # Loop through the Person_Form_Event tree and generate
+    root = pfe_tree.getroot()
+    persons = root.xpath('//person')
+
+    for person in persons:
+        summary['total_subjects'] += 1
+        study_id_ele = (person.xpath('study_id'))[0]
+        study_id = study_id_ele.text
+        forms = person.xpath('./all_form_events/form')
+
+        for form in forms:
+            form_name = form.xpath('name')[0].text
+            fk = FormKey(study_id, form_name)
+            form_summary = _send_person_form_data_to_redcap(client, study_id, form)
+            summary = _update_summary(summary, fk, form_summary)
+    return summary
+
+def _send_person_form_data_to_redcap(client, study_id, form):
+    """
+    Loop through the events of the given form and build
+    the data structure to be sent to REDCap.
+
+    If a form fails to be sent then the entire form
+    is added to a list of `unsent` forms which can be
+    resent later if needed.
+<event>
+     <name>1_arm_1</name>
+     <field> <name>inr_abc</name> <value>1</value></field>
+     <field> <name>inr_xyz</name> <value>2</value></field>
+</event>
+    """
+    form_contains_data = False
+    form_name = form.xpath('name')[0].text
+    logger.debug("sending form `{}`, study_id: `{}` ".format(form_name, study_id))
+
+    # The list of dictionaries representing each event in the form
+    form_events_list = []
+
+    for event in form.xpath('event'):
+        validate_event(event)
+        event_dikt = {}
+        event_dikt['redcap_event_name'] = event.find('name').text
+
+        for field in event.xpath('field'):
+            val = get_child_text_safely(field, 'value')
+            name = field.findtext('name')
+            event_dikt[name] = val
+            if val and not form_contains_data:
+                form_contains_data = True
+
+        event_dikt.update({client.project.def_field: study_id})
+        form_events_list.append(event_dikt)
+
+    if not form_contains_data:
+        logging.debug("Form `{}` is empty for study_id `{}`".format(form_name , study_id))
+
+    # Now that the events of this form are parsed send the json data in a batch
+    form_summary = _execute_send_data_to_redcap(client, form_contains_data, form_events_list)
+    return form_summary
+
+def _execute_send_data_to_redcap(client, form_contains_data, form_events_list):
+    """
+    Helper method for _send_person_form_data_to_redcap
+    Note: the returned value of this method is parsed by "_update_summary"
+    """
+    # TODO: Add code to allow keeping track of `unsent` forms
+    #   by saving them in a separate file and then use it if `resume` is requested
+
+    # TODO: Replace `skip_blanks` boolean by a parameter sent in the command line
+    skip_blanks = False
+    form_summary = {}
+    form_summary['was_sent'] = False
+    form_summary['total_events'] = 0
+
+    if not form_contains_data and skip_blanks:
+        return form_summary
+
+    found_error = False
+    try:
+        response = client.send_data_to_redcap(form_events_list, overwrite = True)
+    except RedcapError as e:
+        found_error = handle_errors_in_redcap_xml_response(e.message, form_summary)
+    if not found_error:
+        form_summary['was_sent'] = True
+        form_summary['total_events'] = len(form_events_list)
+    return form_summary
+
+def init_summary():
+    """
+    Called by `transfer_pfe_tree` to initialize the data structure passed to `_update_summary`
+    """
+    return {
+        'total_subjects' : 0,
+        'form_details'   : {},
+        'subject_details': {},
+        'errors'         : [],
+        'subject_events' : collections.defaultdict(int),
+    }
+
+def _update_summary(summary, fk, form_summary):
+    """
+    Receives status data about one form transfer to REDCap.
+    The returned `summary` dictionary is passed later on to the function
+    which create an html report of the entire batch.
+    Note: `fk` is an onstance of the FormKey class and it is used to decide
+    where to `merge` the `form_summary` data.
+    """
+    total_key = fk.get_total_key()
+
+    # form_details
+    if not total_key in summary['form_details']:
+        summary['form_details'][total_key] = 0
+
+    if "was_sent" in form_summary:
+        summary['form_details'][total_key] += 1
+
+    # subject_details
+    if fk.study_id not in summary['subject_details']:
+        summary['subject_details'][fk.study_id] = {}
+
+    if not total_key in summary['subject_details'][fk.study_id]:
+        summary['subject_details'][fk.study_id][total_key] = 0
+
+    if "was_sent" in form_summary:
+        summary['subject_details'][fk.study_id][total_key] += 1
+
+    # errors
+    if 'errors' in form_summary:
+        summary['errors'].append(form_summary['errors'])
+
+    # event counts
+    # TODO: add column in the report: study_id -> total_events parsed
+    summary['subject_events'][fk.study_id] += form_summary['total_events']
+    return summary
+
+def validate_event(event):
+    """ @see send_person_form_data_to_redcap"""
+    event_name = event.find('name')
+    if event_name is None or not event_name.text:
+        raise Exception('Expected non-blank element event/name')
+
+    event_field_name_list = event.xpath('//event/field/name')
+
+    for name in event_field_name_list:
+        if name.text is None:
+            raise Exception(
+                'Expected non-blank element event/field/name')
+
+class FormKey:
+    def __init__(self, study_id, form_name):
+        self.study_id = study_id
+        self.form_name = form_name
+
+    def get_total_key(self):
+        return "Total_" + self.form_name + "_Forms"
+
