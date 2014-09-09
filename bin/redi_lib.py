@@ -714,7 +714,7 @@ def transfer_pfe_tree(
         pfe_tree,
         redcap_settings,
         email_settings,
-        pfe_repository):
+        pfe_repo):
     """
     The main method which transfers Person Form Event xml to REDCap
     using #send_person_form_data_to_redcap() function.
@@ -731,7 +731,6 @@ def transfer_pfe_tree(
     """
     client = get_redcap_client(redcap_settings, email_settings)
     summary = init_summary()
-    summary['total_subjects'] = 0
 
     # Loop through the Person_Form_Event tree and generate
     root = pfe_tree.getroot()
@@ -739,18 +738,20 @@ def transfer_pfe_tree(
 
     for person in persons:
         summary['total_subjects'] += 1
-        study_id_ele = (person.xpath('study_id'))[0]
-        study_id = study_id_ele.text
+        #study_id_ele = (person.xpath('study_id'))[0]
+        #study_id = study_id_ele.text
+        study_id = person.get('study_id')
+        logger.info('Start sending forms for study_id: ' + study_id)
         forms = person.xpath('./all_form_events/form')
 
         for form in forms:
-            form_name = form.xpath('name')[0].text
+            form_name = form.get('form_name')
             fk = FormKey(study_id, form_name)
-            form_summary = _send_person_form_data_to_redcap(client, study_id, form)
+            form_summary = _send_person_form_data_to_redcap(client, pfe_repo, study_id, form)
             summary = _update_summary(summary, fk, form_summary)
     return summary
 
-def _send_person_form_data_to_redcap(client, study_id, form):
+def _send_person_form_data_to_redcap(client, pfe_repo, study_id, form):
     """
     Loop through the events of the given form and build
     the data structure to be sent to REDCap.
@@ -765,7 +766,7 @@ def _send_person_form_data_to_redcap(client, study_id, form):
 </event>
     """
     form_contains_data = False
-    form_name = form.xpath('name')[0].text
+    form_name = form.get('form_name')
     logger.debug("sending form `{}`, study_id: `{}` ".format(form_name, study_id))
 
     # The list of dictionaries representing each event in the form
@@ -790,17 +791,14 @@ def _send_person_form_data_to_redcap(client, study_id, form):
         logging.debug("Form `{}` is empty for study_id `{}`".format(form_name , study_id))
 
     # Now that the events of this form are parsed send the json data in a batch
-    form_summary = _execute_send_data_to_redcap(client, form_contains_data, form_events_list)
+    form_summary = _execute_send_data_to_redcap(client, pfe_repo, form, form_contains_data, form_events_list)
     return form_summary
 
-def _execute_send_data_to_redcap(client, form_contains_data, form_events_list):
+def _execute_send_data_to_redcap(client, pfe_repo, form, form_contains_data, form_events_list):
     """
     Helper method for _send_person_form_data_to_redcap
     Note: the returned value of this method is parsed by "_update_summary"
     """
-    # TODO: Add code to allow keeping track of `unsent` forms
-    #   by saving them in a separate file and then use it if `resume` is requested
-
     # TODO: Replace `skip_blanks` boolean by a parameter sent in the command line
     skip_blanks = False
     form_summary = {}
@@ -810,9 +808,19 @@ def _execute_send_data_to_redcap(client, form_contains_data, form_events_list):
     if not form_contains_data and skip_blanks:
         return form_summary
 
+    if form.get('redcap_status'):
+        # (!) This is a resumed batch
+        logger.debug("Skip sending already sent form: " + form.get('form_name'))
+        return form_summary
+
     found_error = False
     try:
         response = client.send_data_to_redcap(form_events_list, overwrite = True)
+        # If the form was sent to REDCap update add an extra attribute
+        # which is later used for the resuming
+        form.set('redcap_status', redi.STATUS_SENT)
+        form_tree = etree.ElementTree(form)
+        pfe_repo.store(form_tree)
     except RedcapError as e:
         found_error = handle_errors_in_redcap_xml_response(e.message, form_summary)
     if not found_error:
@@ -837,7 +845,7 @@ def _update_summary(summary, fk, form_summary):
     Receives status data about one form transfer to REDCap.
     The returned `summary` dictionary is passed later on to the function
     which create an html report of the entire batch.
-    Note: `fk` is an onstance of the FormKey class and it is used to decide
+    Note: `fk` is an instance of the FormKey class and it is used to decide
     where to `merge` the `form_summary` data.
     """
     total_key = fk.get_total_key()
@@ -875,6 +883,8 @@ def validate_event(event):
         raise Exception('Expected non-blank element event/name')
 
     event_field_name_list = event.xpath('//event/field/name')
+    # TODO: write unit test for optimized expression below
+    #event_field_name_list = event.xpath('/*/person_form_event/person/all_form_events/form/event/field/name')
 
     for name in event_field_name_list:
         if name.text is None:
