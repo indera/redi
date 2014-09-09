@@ -97,24 +97,24 @@ class TestCreateEmptyEventsForOneSubject(unittest.TestCase):
         self.data2_test1 = etree.ElementTree(etree.fromstring(self.xml2_test1))
         self.output_test1 = """
 <all_form_events>
-    <form>
+    <form form_name="cbc">
         <name>cbc</name>
         <event>
             <name>1_arm_1</name>
-        <status>unsent</status><field><name>lymce_lborres</name><value/></field><field><name>lymce_lborresu</name><value/></field><field><name>hemo_lborresu</name><value/></field><field><name>cbc_lbdtc</name><value/></field><field><name>cbc_nximport</name><value/></field><field><name>lymce_lbstat</name><value/></field><field><name>cbc_complete</name><value/></field><field><name>hemo_lbstat</name><value/></field><field><name>hemo_lborres</name><value/></field></event>
+            <field><name>lymce_lborres</name><value/></field><field><name>lymce_lborresu</name><value/></field><field><name>hemo_lborresu</name><value/></field><field><name>cbc_lbdtc</name><value/></field><field><name>cbc_nximport</name><value/></field><field><name>lymce_lbstat</name><value/></field><field><name>cbc_complete</name><value/></field><field><name>hemo_lbstat</name><value/></field><field><name>hemo_lborres</name><value/></field></event>
     </form>
-    <form>
+    <form form_name="chemistry">
         <name>chemistry</name>
         <event>
             <name>1_arm_1</name>
-            <status>unsent</status><field><name>k_lborres</name><value/></field><field><name>chem_lbdtc</name><value/></field><field><name>sodium_lborresu</name><value/></field><field><name>k_lbstat</name><value/></field><field><name>sodium_lbstat</name><value/></field><field><name>chem_nximport</name><value/></field><field><name>chemistry_complete</name><value/></field><field><name>k_lborresu</name><value/></field><field><name>sodium_lborres</name><value/></field>
+            <field><name>k_lborres</name><value/></field><field><name>chem_lbdtc</name><value/></field><field><name>sodium_lborresu</name><value/></field><field><name>k_lbstat</name><value/></field><field><name>sodium_lbstat</name><value/></field><field><name>chem_nximport</name><value/></field><field><name>chemistry_complete</name><value/></field><field><name>k_lborresu</name><value/></field><field><name>sodium_lborres</name><value/></field>
         </event>
     </form>
-    <form>
+    <form form_name="inr">
         <name>inr</name>
         <event>
             <name>1_arm_1</name>
-            <status>unsent</status><field><name>inr_lbdtc</name><value/></field><field><name>inr_complete</name><value/></field><field><name>inr_nximport</name><value/></field>
+            <field><name>inr_lbdtc</name><value/></field><field><name>inr_complete</name><value/></field><field><name>inr_nximport</name><value/></field>
         </event>
     </form>
 </all_form_events>"""
