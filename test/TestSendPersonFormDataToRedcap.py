@@ -40,21 +40,21 @@ class TestSendPersonFormDataToRedcap(unittest.TestCase):
         # 3 Persons
         pfe_xml = """
 <person_form_event>
-    <person __number="1">
+    <person study_id="100">
         <study_id>100</study_id>
         <all_form_events>
-            <form f_name="cbc"> <name>cbc</name>
+            <form form_name="cbc"> <name>cbc</name>
                 <event> <name>1_arm_1</name> <field> <name>cbc_lbdtc</name> <value>1905-10-01</value> </field> </event>
             </form>
-            <form f_name="inr"> <name>inr</name>
+            <form form_name="inr"> <name>inr</name>
                 <event> <name>1_arm_1</name> <field> <name>cbc_lbdtc</name> <value>1905-10-01</value> </field> </event>
             </form>
         </all_form_events>
     </person>
-    <person __number="2">
+    <person study_id="99">
         <study_id>99</study_id>
         <all_form_events>
-            <form f_name="cbc"> <name>cbc</name>
+            <form form_name="cbc"> <name>cbc</name>
                 <event> <name>1_arm_1</name>
                     <field> <name>cbc_lbdtc</name> <value>1905-10-01</value> </field>
                     <field> <name>wbc_lborres</name> <value>3.0</value> </field>
@@ -63,7 +63,7 @@ class TestSendPersonFormDataToRedcap(unittest.TestCase):
                     <field> <name>neut_lbstat</name> <value/> </field>
                 </event>
             </form>
-            <form f_name="inr"> <name>inr</name>
+            <form form_name="inr"> <name>inr</name>
                 <event> <name>1_arm_1</name>
                         <field> <name>inr_lbdtc</name> <value>1906-12-01</value> </field>
                         <field> <name>inr_lborres</name> <value/> </field>
@@ -72,10 +72,10 @@ class TestSendPersonFormDataToRedcap(unittest.TestCase):
             </form>
         </all_form_events>
     </person>
-    <person __number="3">
+    <person study_id="98">
         <study_id>98</study_id>
         <all_form_events>
-            <form f_name="cbc"> <name>cbc</name>
+            <form form_name="cbc"> <name>cbc</name>
                 <event> <name>1_arm_1</name> <field> <name>cbc_lbdtc</name> <value></value> </field> </event>
                 <event> <name>1_arm_2</name> <field> <name>cbc_lbdtc</name> <value></value> </field> </event>
             </form>
@@ -111,7 +111,8 @@ class TestSendPersonFormDataToRedcap(unittest.TestCase):
 
         # Check if REDCap is alive
         client = redi_lib.get_redcap_client(redcap_settings, email_settings)
-
+        pfe_repo = MockDataRepository()
+        skip_blanks = False
         summary = redi_lib.init_summary()
 
         # Loop through the Person_Form_Event tree and generate arrays of dictionaries
@@ -121,15 +122,14 @@ class TestSendPersonFormDataToRedcap(unittest.TestCase):
 
         for person in persons:
             summary['total_subjects'] += 1
-            study_id_ele = (person.xpath('study_id'))[0]
-            study_id = study_id_ele.text
+            study_id = person.get('study_id')
 
             forms = person.xpath('./all_form_events/form')
             for form in forms:
-                form_name = form.get('f_name')
+                form_name = form.get('form_name')
                 fk = FormKey(study_id, form_name)
                 form_summary = redi_lib._send_person_form_data_to_redcap(
-                    client, study_id, form)
+                    client, pfe_repo, study_id, form, skip_blanks)
                 summary = redi_lib._update_summary(summary, fk, form_summary)
 
         #print summary
