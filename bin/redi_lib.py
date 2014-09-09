@@ -719,7 +719,8 @@ def transfer_pfe_tree(
         pfe_tree,
         redcap_settings,
         email_settings,
-        pfe_repo):
+        pfe_repo,
+        skip_blanks):
     """
     The main method which transfers Person Form Event xml to REDCap
     using #send_person_form_data_to_redcap() function.
@@ -743,8 +744,6 @@ def transfer_pfe_tree(
 
     for person in persons:
         summary['total_subjects'] += 1
-        #study_id_ele = (person.xpath('study_id'))[0]
-        #study_id = study_id_ele.text
         study_id = person.get('study_id')
         logger.info('Start sending forms for study_id: ' + study_id)
         forms = person.xpath('./all_form_events/form')
@@ -752,11 +751,11 @@ def transfer_pfe_tree(
         for form in forms:
             form_name = form.get('form_name')
             fk = FormKey(study_id, form_name)
-            form_summary = _send_person_form_data_to_redcap(client, pfe_repo, study_id, form)
+            form_summary = _send_person_form_data_to_redcap(client, pfe_repo, study_id, form, skip_blanks)
             summary = _update_summary(summary, fk, form_summary)
     return summary
 
-def _send_person_form_data_to_redcap(client, pfe_repo, study_id, form):
+def _send_person_form_data_to_redcap(client, pfe_repo, study_id, form, skip_blanks):
     """
     Loop through the events of the given form and build
     the data structure to be sent to REDCap.
@@ -796,18 +795,26 @@ def _send_person_form_data_to_redcap(client, pfe_repo, study_id, form):
         logging.debug("Form `{}` is empty for study_id `{}`".format(form_name , study_id))
 
     # Now that the events of this form are parsed send the json data in a batch
-    form_summary = _execute_send_data_to_redcap(client, pfe_repo, form, form_contains_data, form_events_list)
+    form_summary = _execute_send_data_to_redcap(client,
+                                                pfe_repo,
+                                                form,
+                                                form_contains_data,
+                                                form_events_list,
+                                                skip_blanks)
     return form_summary
 
-def _execute_send_data_to_redcap(client, pfe_repo, form, form_contains_data, form_events_list):
+def _execute_send_data_to_redcap(client,
+                                pfe_repo,
+                                form,
+                                form_contains_data,
+                                form_events_list,
+                                skip_blanks):
     """
     Helper method for _send_person_form_data_to_redcap
     Note: the returned value of this method is parsed by "_update_summary"
     """
-    # TODO: Replace `skip_blanks` boolean by a parameter sent in the command line
-    skip_blanks = False
     form_summary = {}
-    form_summary['was_sent'] = False
+    form_summary['was_sent'] = True
     form_summary['total_events'] = 0
 
     if not form_contains_data and skip_blanks:
@@ -866,7 +873,7 @@ def _update_summary(summary, fk, form_summary):
     if fk.study_id not in summary['subject_details']:
         summary['subject_details'][fk.study_id] = {}
 
-    if not total_key in summary['subject_details'][fk.study_id]:
+    if total_key not in summary['subject_details'][fk.study_id]:
         summary['subject_details'][fk.study_id][total_key] = 0
 
     if "was_sent" in form_summary:
