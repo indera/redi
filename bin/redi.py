@@ -148,7 +148,7 @@ def main():
          logger)
 
     _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
-         get_emr_data, settings, output_files, db_path, args['resume'])
+         get_emr_data, settings, output_files, db_path, args['resume'], args['skip_blanks'])
 
 
 def _makedirs(data_folder):
@@ -206,7 +206,7 @@ def _save(obj, path):
 
 
 def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
-         get_emr_data, settings, data_folder, database_path, resume=False):
+         get_emr_data, settings, data_folder, database_path, resume=False, skip_blanks=False):
     global translational_table_tree
 
     assert _person_form_events_service is not None
@@ -279,7 +279,7 @@ def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
             person_form_event_tree_with_data,
             redcap_settings,
             email_settings,
-            _person_form_events_service)
+            _person_form_events_service, skip_blanks)
 
         # write person_form_event_tree to file
         write_element_tree_to_file(
@@ -572,6 +572,13 @@ def parse_args(arguments=None):
         help='Specify the path to the directory containing project specific '\
         'input and output data which will help in running multiple'\
         ' simultaneous instances of redi for different projects')
+
+    parser.add_argument(
+        '--skip-blanks',
+        default=False,
+        action='store_true',
+        required=False,
+        help='skip blank events when sending event data to RedCAP')
 
     if arguments:
         parsed = parser.parse_args(arguments)
@@ -1070,10 +1077,7 @@ def update_event_name(data, lookup_data, undefined):
                 # print field_key
                 distinct_value[field_key] += 1
                 if distinct_value[field_key] > 1:
-                    multiple_values_alert.append(
-                        'Multiple values found for field ' +
-                        field_key)
-                    logger.warn("update_event_name: multiple values \
+                    logger.debug("update_event_name: multiple values \
                         found for field %s", field_key)
             else:
                 element_to_set.text = undefined
