@@ -328,7 +328,7 @@ def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
         # TODO: revise the deletion of the data folder
         #   Perhaps we should keep the redi.db and report.html files
         redi_lib.delete_temporary_folder(data_folder)
-        log.info("All generated files have been removed."\
+        logger.info("All generated files have been removed."\
             "Please pass the `--keep` option to retain the files")
 
 def save_or_send_report(settings, xml_report_tree):

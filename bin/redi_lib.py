@@ -821,9 +821,13 @@ def _execute_send_data_to_redcap(client,
         return form_summary
 
     if form.get('redcap_status'):
-        # (!) This is a resumed batch
+        # (!) This is a resumed batch but this form was already sent
+        # Return a fake summary so thwe report includes total counts
         logger.debug("Skip sending already sent form: " + form.get('form_name'))
-        return form_summary
+        fake_summary = {}
+        fake_summary['was_sent'] = True
+        fake_summary['total_events'] = len(form_events_list)
+        return fake_summary
 
     found_error = False
     try:
