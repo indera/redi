@@ -46,8 +46,8 @@ clean:
 	@rm -f person_form_event_tree.xml
 	@rm -f person_form_event_tree_with_data.xml
 	@rm -rf vagrant/data/
-	@rm -f vagrant/demographic_test_data.csv
 	@rm -f vagrant/redi.db
+	@rm -f vagrant/out.csv
 	@rm -f redi.db
 	@rm -rf data/
 	@echo "Done."

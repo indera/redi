@@ -39,6 +39,10 @@ rc_post:
 rc_get:
 	../bin/utils/redcap_records.py --token=121212 --url=http://localhost:8998/redcap/api/ -f "demographics chemistry cbc inr hcv_rna_imported"
 
+rc_compare:
+	../bin/utils/redcap_records.py --token=121212 --url=http://localhost:8998/redcap/api/ -f "demographics chemistry cbc inr hcv_rna_imported" > out.csv
+	diff -u ../config/vagrant-data/redi_out_reference.csv out.csv
+
 rc_fresh:
 	make copy_project_data
 	make rc_clean
