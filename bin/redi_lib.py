@@ -28,7 +28,6 @@ import sys
 import collections
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
-proj_root = redi.get_proj_root()
 
 DEFAULT_DATA_DIRECTORY = os.getcwd()
 
@@ -46,40 +45,30 @@ def get_child_text_safely(etree, ele):
         return ele.text
 
 
-"""
-handle_errors_in_redcap_xml_response:
-This function checks for any errors in the redcap response and update report data if there are any errors.
-Parameters:
-    redcap_response_xml: This parameter holds the redcap response passed to this function
-    report_data: This parameter holds the report data passed to this function
-
-"""
-
-
-def handle_errors_in_redcap_xml_response(redcap_response, report_data):
+def handle_errors_in_redcap_xml_response(redcap_response, form_summary):
+    """
+    This function checks for any errors in the redcap response and
+        update report data if there are any errors.
+    Parameters:
+        :redcap_response: holds the response from REDCap
+        :form_summary: holds the dictionary in which we store errors
+    """
     # converting string to dictionary
     response = ast.literal_eval(str(redcap_response))
-    logger.debug('handling response from the REDCap')
+
     try:
         if 'error' in response:
             for recordData in response['records']:
                 error_string = "Error writing to record " + recordData["record"] + " field " + recordData[
                     "field_name"] + " Value " + recordData["value"] + ".Error Message: " + recordData["message"]
-                logger.info(error_string)
-                report_data['errors'].append(error_string)
+                logger.error("Handling error in REDCap response: "
+                             + error_string)
+                form_summary['errors'].append(error_string)
         else:
             logger.error("REDCap response is in unknown format")
     except KeyError as e:
-        logger.error(str(e))
+        logger.error("KeyError found while parsing REDCap response: " + str(e))
     return True
-
-
-# Convenience method for getting the first element
-# Note: for printing an object can use: print  repr(obj)
-def get_first_item(aList):
-    if aList:
-        return aList[0]
-    return None
 
 """
 create_temp_dir_debug:
@@ -538,6 +527,7 @@ def transfer_pfe_tree(
             fk = FormKey(study_id, form_name)
             form_summary = _send_person_form_data_to_redcap(client, pfe_repo, study_id, form, skip_blanks)
             summary = _update_summary(summary, fk, form_summary)
+    logger.debug(summary)
     return summary
 
 def _send_person_form_data_to_redcap(client, pfe_repo, study_id, form, skip_blanks):
@@ -563,18 +553,19 @@ def _send_person_form_data_to_redcap(client, pfe_repo, study_id, form, skip_blan
 
     for event in form.xpath('event'):
         validate_event(event)
-        event_dikt = {}
-        event_dikt['redcap_event_name'] = event.find('name').text
+        event_dict = {
+            'redcap_event_name': event.find('name').text,
+        }
 
         for field in event.xpath('field'):
             val = get_child_text_safely(field, 'value')
             name = field.findtext('name')
-            event_dikt[name] = val
+            event_dict[name] = val
             if val and not form_contains_data:
                 form_contains_data = True
 
-        event_dikt.update({client.project.def_field: study_id})
-        form_events_list.append(event_dikt)
+        event_dict.update({client.project.def_field: study_id})
+        form_events_list.append(event_dict)
 
     if not form_contains_data:
         logging.debug("Form `{}` is empty for study_id `{}`".format(form_name , study_id))
@@ -598,20 +589,23 @@ def _execute_send_data_to_redcap(client,
     Helper method for _send_person_form_data_to_redcap
     Note: the returned value of this method is parsed by "_update_summary"
     """
-    form_summary = {}
-    form_summary['was_sent'] = True
-    form_summary['total_events'] = 0
+    form_summary = {
+        'was_sent': True,
+        'total_events': 0,
+        'errors': [],
+    }
 
     if not form_contains_data and skip_blanks:
         return form_summary
 
     if form.get('redcap_status'):
         # (!) This is a resumed batch but this form was already sent
-        # Return a fake summary so thwe report includes total counts
+        # Return a fake summary so the report includes total counts
         logger.debug("Skip sending already sent form: " + form.get('form_name'))
-        fake_summary = {}
-        fake_summary['was_sent'] = True
-        fake_summary['total_events'] = len(form_events_list)
+        fake_summary = {
+            'was_sent': True,
+            'total_events': len(form_events_list),
+        }
         return fake_summary
 
     found_error = False
@@ -665,11 +659,11 @@ def _update_summary(summary, fk, form_summary):
     if total_key not in summary['subject_details'][fk.study_id]:
         summary['subject_details'][fk.study_id][total_key] = 0
 
-    if "was_sent" in form_summary:
+    if "was_sent" in form_summary and form_summary['was_sent']:
         summary['subject_details'][fk.study_id][total_key] += 1
 
     # errors
-    if 'errors' in form_summary:
+    if form_summary['errors']:
         summary['errors'].append(form_summary['errors'])
 
     # event counts
@@ -683,9 +677,7 @@ def validate_event(event):
     if event_name is None or not event_name.text:
         raise Exception('Expected non-blank element event/name')
 
-    event_field_name_list = event.xpath('//event/field/name')
-    # TODO: write unit test for optimized expression below
-    #event_field_name_list = event.xpath('/*/person_form_event/person/all_form_events/form/event/field/name')
+    event_field_name_list = event.xpath('field/name')
 
     for name in event_field_name_list:
         if name.text is None:

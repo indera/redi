@@ -299,13 +299,13 @@ def _run(config_file, configuration_directory, do_keep_gen_files, dry_run,
 
         if sent_forms_num != unsent_forms_num:
             logger.warning("{} out of {} forms were sent to the REDCap."\
-                .format(unsent_forms_num, sent_forms_num))
+                .format(sent_forms_num, unsent_forms_num))
             logger.warning(
                     "Please check the `redcap_status` attribute for forms in " +
                     _person_form_events_service.get_filename())
         else:
             logger.info("Success: {} out of {} forms were sent to the REDCap."\
-                .format(unsent_forms_num, sent_forms_num))
+                .format(sent_forms_num, unsent_forms_num))
 
         # Add any errors from running the rules to the report
         map(logger.warning, rule_errors)
