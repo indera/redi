@@ -33,8 +33,6 @@ from TestCreateSummaryReport import TestCreateSummaryReport
 from TestUpdateStatusField import TestUpdateStatusField
 from TestCreateEmptyEventsForOneSubject import TestCreateEmptyEventsForOneSubject
 from TestCreateEmptyEventTreeForStudy import TestCreateEmptyEventTreeForStudy
-from TestCreateImportDataJson import TestCreateImportDataJson
-from TestGenerateOutput import TestGenerateOutput
 from TestParseAll import TestParseAll
 from TestHandleREDCapResponse import TestHandleErrorsInREDCapResponse
 from TestParseRawXml import TestParseRawXml
@@ -77,8 +75,6 @@ class redi_suite(unittest.TestSuite):
         redi_test_suite.addTest(TestParseAll)
 
         # The redesign functions May 2014
-        redi_test_suite.addTest(TestCreateImportDataJson)
-        redi_test_suite.addTest(TestGenerateOutput)
         redi_test_suite.addTest(TestHandleErrorsInREDCapResponse)
         redi_test_suite.addTest(TestParseRawXml)
         redi_test_suite.addTest(TestValidateXmlFleAndExtractData)
