@@ -123,6 +123,12 @@ def main():
     # this method reduces the syntax
     settings.set_attributes()
 
+    # TODO: fix or permanently remove the --resume switch
+    if args['resume']:
+        msg = 'The resume switch has been disabled.'
+        logger.critical(msg)
+        sys.exit(msg)
+
     # creating temporary folder for storing files which may or may not
     # be retained (depending on the value of do_keep_gen_files)
     # When dry run state is on, the files are retained by default
@@ -557,9 +563,7 @@ def parse_args(arguments=None):
         'provide any input when -d is used.')
 
     parser.add_argument('-r', '--resume', default=False, action='store_true',
-                        help='WARNING!!! Resumes the last run of the program. '
-                             'This switch is for a specific scenario. Check '
-                             'the documentation before using it.')
+                        help='WARNING! Broken. DO NOT USE!')
 
     parser.add_argument('-v', '--verbose', required=False,
                         default=False, action='store_true',
