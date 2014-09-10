@@ -2023,11 +2023,8 @@ class PersonFormEventsRepository(object):
     @see redi_lib#_execute_send_data_to_redcap
     """
     def __init__(self, filename, logger=None):
-        # simple test to catch obvious errors with a filename supplied
         self._filename = filename
         self._logger = logger
-        if logger:
-            logger.debug('Writing ElementTree to %s', filename)
 
     def get_filename(self):
         return self._filename
@@ -2043,6 +2040,8 @@ class PersonFormEventsRepository(object):
         return etree.parse(self._filename)
 
     def store(self, pfe_tree):
+       if self._logger:
+           self._logger.debug('Writing ElementTree to %s', self._filename)
        pfe_tree.write(self._filename,
                        encoding="utf-8",
                        xml_declaration=True,
