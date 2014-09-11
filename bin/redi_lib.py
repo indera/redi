@@ -646,7 +646,7 @@ def _update_summary(summary, fk, form_summary):
     total_key = fk.get_total_key()
 
     # form_details
-    if not total_key in summary['form_details']:
+    if total_key not in summary['form_details']:
         summary['form_details'][total_key] = 0
 
     if "was_sent" in form_summary:
